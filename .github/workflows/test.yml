@@ -1,0 +1,219 @@
+name: AIM Linux 2526 Coursework Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files and enforce coursework.sh and generated/ only
+        shell: bash
+        run: |
+          set -eo pipefail
+
+          # Skip changed files check for the upstream repository
+          if [ "${GITHUB_REPOSITORY}" = "unnc-aim/aim-linux-2526-coursework" ]; then
+            echo "# Tests" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Files changed" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⏭️ Skipped for upstream repository (${GITHUB_REPOSITORY})" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Status: ⏭️ Skipped" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Determine current branch name (fallback if GITHUB_REF_NAME not set)
+          CURRENT_BRANCH="${GITHUB_REF_NAME:-${GITHUB_REF#refs/heads/}}"
+
+          # Compute the repository's first (root) commit and compare against it so that
+          # changes are always reported relative to the initial project state.
+          if git rev-list --max-parents=0 HEAD >/dev/null 2>&1; then
+            INITIAL_COMMIT="$(git rev-list --max-parents=0 HEAD | tail -n1)"
+            BASE_REF="${INITIAL_COMMIT}"
+          else
+            # Fallback: if we can't find the root commit (very shallow checkout),
+            # compare with latest origin/main as a safe default.
+            git fetch --no-tags --prune --depth=1 origin main >/dev/null 2>&1 || true
+            BASE_REF="origin/main"
+          fi
+
+          CHANGED_FILES="$(git diff --name-only ${BASE_REF}...HEAD || true)"
+          echo "# Tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Files changed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "${CHANGED_FILES}" ]; then
+            echo "No changed files detected; nothing to check." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          else
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' "${CHANGED_FILES}" | awk 'NR==1 && NF==0{next} {print}' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          DISALLOWED_LIST=()
+          for f in ${CHANGED_FILES}; do
+            # Allow edits to coursework.sh and any files inside generated/
+            case "${f}" in
+              coursework.sh|generated/*)
+                # allowed
+                ;;
+              *)
+                DISALLOWED_LIST+=("${f}")
+                ;;
+            esac
+          done
+
+          if [ ${#DISALLOWED_LIST[@]} -gt 0 ]; then
+            echo "### Disallowed modifications" >> "$GITHUB_STEP_SUMMARY"
+            echo 'The workflow only permits changes to `coursework.sh` or files under `generated/`, but disallowed modification(s) detected in these files:' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' "${DISALLOWED_LIST[@]}" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "❌ Disallowed modification(s) detected." >> "$GITHUB_STEP_SUMMARY"
+            printf 'Disallowed modification(s) detected: %s\n' "${DISALLOWED_LIST[*]}" >&2
+            exit 1
+          else 
+            echo "- Status: ✅ Passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Run tests
+        if: always()
+        shell: bash
+        run: |
+          set -eo pipefail
+
+          # Skip tests for the upstream repository
+          if [ "${GITHUB_REPOSITORY}" = "unnc-aim/aim-linux-2526-coursework" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Tests Skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⏭️ Skipped for upstream repository (${GITHUB_REPOSITORY})" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Status: ⏭️ Skipped (Upstream)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Skip tests for the first commit after repository creation from template
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          if [ "$COMMIT_COUNT" -eq 1 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Tests Skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⏭️ Skipped for first commit after repository creation from template" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Status: ⏭️ Skipped (First commit)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Hash Verification" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # 检查是否存在 hash.txt 文件
+          if [ ! -f "generated/hash.txt" ]; then
+            echo "❌ hash.txt 文件不存在！请先在本地运行 bash ./test.sh 生成验证文件。" >> "$GITHUB_STEP_SUMMARY"
+            echo "请在本地运行测试脚本，然后直接提交，不要修改任何文件。" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # 保存原始 hash 值
+          ORIGINAL_HASH=$(cat generated/hash.txt)
+          # echo "原始 hash 值: $ORIGINAL_HASH" >> "$GITHUB_STEP_SUMMARY"
+
+          # 删除 hash.txt 文件
+          rm generated/hash.txt
+
+          # 重新计算 hash 值
+          if command -v sha256sum >/dev/null 2>&1; then
+            HASH_CMD="sha256sum"
+          elif command -v shasum >/dev/null 2>&1; then
+            HASH_CMD="shasum -a 256"
+          else
+            echo "❌ 错误：系统中没有可用的哈希命令" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # 计算 generated 目录中所有文件的哈希（按文件名排序以保证一致性，排除hash.txt）
+          GENERATED_FILES=$(find generated -type f -not -name ".gitkeep" -not -name "hash.txt" | sort)
+          GENERATED_HASH=""
+          for file in $GENERATED_FILES; do
+            file_hash=$($HASH_CMD "$file" | cut -d' ' -f1)
+            GENERATED_HASH="${GENERATED_HASH}${file_hash}"
+          done
+          GENERATED_HASH=$($HASH_CMD <<< "$GENERATED_HASH" | cut -d' ' -f1)
+          # 计算 coursework.sh 的哈希
+          COURSEWORK_HASH=$($HASH_CMD coursework.sh | cut -d' ' -f1)
+          # 拼接哈希值
+          COMBINED_HASH="${GENERATED_HASH}+${COURSEWORK_HASH}"
+          # 计算最终哈希
+          RECALCULATED_HASH=$($HASH_CMD <<< "$COMBINED_HASH" | cut -d' ' -f1)
+
+          # echo "重新计算的 hash 值: $RECALCULATED_HASH" >> "$GITHUB_STEP_SUMMARY"
+
+          # 比较 hash 值
+          if [ "$ORIGINAL_HASH" = "$RECALCULATED_HASH" ]; then
+            echo "✅ Hash 验证通过！" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "❌ Hash 验证失败！" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### 🔄 请重新运行测试" >> "$GITHUB_STEP_SUMMARY"
+            echo "检测到文件可能被修改，请按以下步骤操作：" >> "$GITHUB_STEP_SUMMARY"
+            echo "1. 在本地重新运行 \`bash ./test.sh\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "2. 不要修改任何生成的文件" >> "$GITHUB_STEP_SUMMARY"
+            echo "3. 直接 commit 并 push" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**注意：** 不要手动编辑 \`generated/\` 目录下的任何文件！" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Run the test script and capture output
+          if bash ./test.sh > test_output.txt 2>&1; then
+            TEST_EXIT_CODE=0
+          else
+            TEST_EXIT_CODE=$?
+          fi
+
+          # Display test output
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat test_output.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Extract test results
+          if grep -q "通过:" test_output.txt; then
+            RESULTS=$(grep "通过:" test_output.txt)
+            echo "**${RESULTS}**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          # Check if all tests passed
+          if [ $TEST_EXIT_CODE -eq 0 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### ✅ All tests passed!" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "## 🎉 Congrats" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Please copy [this link (hover and copy link)](${RUN_URL}) and submit it together with your name and student ID to our assignment questionnaire:" >> "$GITHUB_STEP_SUMMARY"
+            echo "<https://forms.cloud.microsoft/r/Jy9mmHHGbi>" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### ❌ Some tests failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "One or more checks failed. See job summary above for details." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
