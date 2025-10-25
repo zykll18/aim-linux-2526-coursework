@@ -1,0 +1,3 @@
+Linux is a powerful operating system.
+Bash scripting is fun and useful.
+Command line tools are essential for developers.

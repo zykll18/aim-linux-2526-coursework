@@ -33,21 +33,16 @@
 # 提示：先进入 generated 目录，然后使用创建子目录，创建完成后回到上级目录
 
 # 请在下方写下你的命令（删除下面的 echo 语句并替换为你的命令，下面每一题都同理）
-cd ./generated
-mkdir workspace
-cd workspace
-mkdir scipts
-mkdir data
-cd ../..
+mkdir -p ./generated
+mkdir -p ./generated/workspace/scripts ./generated/workspace/data
 
 # 任务 2: 创建文件
 # 要求：在 ./generated/workspace/scripts/ 目录下创建两个空文件：
 #       hello.sh 和 utils.sh
 
 # 请在下方写下你的命令
-cd ./generated/workspace/scipts
-touch hellp.sh
-touch utils.sh
+touch ./generated/workspace/scripts/hello.sh ./generated/workspace/scripts/utils.sh
+
 
 # 任务 3: 创建文件内容
 # 要求：在 ./generated/workspace/scripts/hello.sh 文件中写入以下内容（每一行开头无空格）：
@@ -56,26 +51,23 @@ touch utils.sh
 # 提示：可以自行上网搜索如何一次性写入包含多行的文件
 
 # 请在下方写下你的命令
-cd ./generated/workspace/scipts/hello.sh
-echo "#!/bin/bash" >> hello.sh
-echo 'echo "Hello, Linux!"' >> hello.sh
-cd ../../../..
+cat > ./generated/workspace/scripts/hello.sh <<'EOF'
+#!/bin/bash
+echo "Hello, Linux!"
+EOF
+chmod +x ./generated/workspace/scripts/hello.sh
 
 # 任务 4: 删除文件
 # 要求：删除 ./generated/workspace/scripts/utils.sh 文件
 
 # 请在下方写下你的命令
-cd ./generated/workspace/scipts
-rm utils.sh
-cd ../../../..
+rm -f ./generated/workspace/scripts/utils.sh
 
 # 任务 5: 使用 rm 删除目录
 # 要求：删除 ./generated/workspace/data/ 目录
 
 # 请在下方写下你的命令
-cd ./generated/workspace
-rm -r data
-cd ../../..
+rm -rf ./generated/workspace/data
 
 # 任务 6: 使用 cat 和 grep 创建和搜索文件
 # 要求：
@@ -87,12 +79,12 @@ cd ../../..
 # 提示：可以自行上网搜索如何一次性写入包含多行的文件
 
 # 请在下方写下你的命令
-cd ./generated/workspace
-touch info.txt
-echo -e "Linux is a powerful operating system.\nBash scripting is fun and useful.\nCommand line tools are essential for developers." >> info.txt
-touch result.txt
-grep "Linux" info.txt >> result.txt
-cd ../../..
+cat > ./generated/workspace/info.txt <<'EOF'
+Linux is a powerful operating system.
+Bash scripting is fun and useful.
+Command line tools are essential for developers.
+EOF
+grep "Linux" ./generated/workspace/info.txt > ./generated/workspace/result.txt
 # ============================================================================
 # 脚本结束
 # ============================================================================
